@@ -18,7 +18,7 @@ This closes the loop. Claude reads the thread itself, makes the change, and post
 
 | Tool | What it does |
 |---|---|
-| `list_figma_comments` | Lists comments on a file. Filters out resolved threads by default, and takes an optional `since` timestamp so you can ask for just what's new. Returns author, message, timestamp, and whether it's a reply. |
+| `list_figma_comments` | Lists comments on a file. Filters out resolved threads by default, and takes an optional `since` timestamp so you can ask for just what's new. Returns author, message, timestamp, thread position, and the pin — the canvas coordinates or node offset the comment points at. |
 | `reply_to_figma_comment` | Posts a reply into an existing thread. |
 
 ## Setup

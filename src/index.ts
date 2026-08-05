@@ -10,6 +10,16 @@ if (!FIGMA_TOKEN) {
 
 const FIGMA_API_BASE = 'https://api.figma.com/v1';
 
+/**
+ * Where a comment is pinned. Figma returns one of two shapes: absolute canvas
+ * coordinates, or an offset within a specific node. Comments left on top of an
+ * image are almost always the latter — and without this, a comment like
+ * "too much space here" arrives with no idea what "here" is.
+ */
+type CommentPin =
+  | { x: number; y: number }
+  | { node_id: string; node_offset: { x: number; y: number } };
+
 async function figmaFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${FIGMA_API_BASE}${path}`, {
     ...init,
@@ -49,7 +59,7 @@ server.registerTool(
         user: { handle: string };
         created_at: string;
         resolved_at: string | null;
-        client_meta: unknown;
+        client_meta: CommentPin | null;
       }>;
     };
 
@@ -69,7 +79,8 @@ server.registerTool(
       created_at: c.created_at,
       resolved: Boolean(c.resolved_at),
       is_reply: Boolean(c.parent_id),
-      parent_id: c.parent_id || null
+      parent_id: c.parent_id || null,
+      pin: c.client_meta ?? null
     }));
 
     return {
