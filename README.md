@@ -18,8 +18,33 @@ This closes the loop. Claude reads the thread itself, makes the change, and post
 
 | Tool | What it does |
 |---|---|
-| `list_figma_comments` | Lists comments on a file. Filters out resolved threads by default, and takes an optional `since` timestamp so you can ask for just what's new. Returns author, message, timestamp, thread position, and the pin — the canvas coordinates or node offset the comment points at. |
-| `reply_to_figma_comment` | Posts a reply into an existing thread. |
+| `list_figma_comments` | Lists comment threads, with replies nested under the comment they answer. Resolves each pin to the layer it sits on, so a comment arrives as *"on `01 · Results — default`"* rather than `{node_id: "132:5"}`. Filters resolved threads by default. Optional `since` returns anything with new activity — including old threads that just got a reply. |
+| `reply_to_figma_comment` | Posts a reply into a thread. Accepts a thread id or the id of any reply inside it; Figma only accepts replies against the root, so it walks up automatically. |
+| `get_figma_comment_image` | Renders whatever a comment is pinned to and returns it as an image. This is the one that matters for comments left on screenshots — see below. |
+
+### Why the image tool exists
+
+Layer names stop helping exactly where you need them most.
+
+A comment pinned to a frame resolves to something useful: `01 · Results — default`. A comment
+pinned to a pasted screenshot resolves to `image 21`, type `RECTANGLE`. Technically correct,
+completely useless — and *"too much space here"* is unanswerable without seeing it.
+
+So `list_figma_comments` flags those pins with a `render_hint`, and `get_figma_comment_image`
+renders the node so the agent can look at it.
+
+Renders are size-budgeted. A full-page frame comes back around 650KB at scale 1, which costs
+more context than the answer is worth, so anything over ~400KB is re-rendered at a lower scale
+until it fits. When that happens the response says so rather than quietly handing back
+something different from what was asked for.
+
+### Point pins vs. region pins
+
+Figma has two kinds of pin and the difference carries meaning. A point pin is a dot. A region
+pin is a box someone dragged over an area — the comment is about everything inside it, not the
+pixel underneath. On a real design file, roughly half the comments turn out to be regions.
+
+Both come back on `anchor`, with `region` present only for the second kind.
 
 ## Setup
 

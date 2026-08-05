@@ -1,6 +1,6 @@
 {
   "name": "figma-comments-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "An MCP server that lets Claude read and reply to Figma file comments directly.",
   "main": "dist/index.js",
   "scripts": {
