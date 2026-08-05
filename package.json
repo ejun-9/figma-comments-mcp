@@ -1,0 +1,28 @@
+{
+  "name": "figma-comments-mcp",
+  "version": "1.0.0",
+  "description": "An MCP server that lets Claude read and reply to Figma file comments directly.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "figma",
+    "claude",
+    "model-context-protocol",
+    "design-workflow"
+  ],
+  "author": "Eun Ji Jung",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2"
+  }
+}
