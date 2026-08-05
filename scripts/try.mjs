@@ -110,7 +110,12 @@ if (imageId) {
 
 const res = await call('tools/call', {
   name: 'list_figma_comments',
-  arguments: { file, include_resolved: true }
+  arguments: {
+    file,
+    include_resolved: true,
+    // A frame URL scopes itself; --all overrides that the way the model would.
+    ...(args.includes('--all') ? { scope: 'file' } : {})
+  }
 });
 
 if (res.result.isError) {
@@ -119,25 +124,11 @@ if (res.result.isError) {
   process.exit(1);
 }
 
-if (raw) {
-  console.log(res.result.content[0].text);
-  proc.kill();
-  process.exit(0);
-}
-
-const { file_key, thread_count, threads } = JSON.parse(res.result.content[0].text);
-console.log(`\n${file_key} — ${thread_count} thread${thread_count === 1 ? '' : 's'}\n`);
-
-for (const t of threads) {
-  const a = t.anchor ?? {};
-  const where = a.node_name ? `${a.node_name} (${a.node_type})` : a.canvas ? 'canvas' : 'unpinned';
-  const shape = a.region ? `region ${a.region.width}×${a.region.height}` : a.node_id ? 'point' : '';
-
-  console.log(`  ${t.resolved ? '✓' : '•'} ${t.author}: ${t.message}`);
-  console.log(`      on ${where}${shape ? ` · ${shape}` : ''}`);
-  if (a.render_hint) console.log(`      ↳ ${a.render_hint}`);
-  for (const r of t.replies) console.log(`      ↳ ${r.author}: ${r.message}`);
-  console.log();
-}
+// The tool now returns the readable form directly — there is nothing left for
+// this script to pretty-print. `--raw` is kept so the flag still works, but
+// both paths print the same thing, which is the point.
+const body = res.result.content[0].text;
+console.log(`\n${body}\n`);
+if (raw) console.log(`[${body.length} chars]`);
 
 proc.kill();

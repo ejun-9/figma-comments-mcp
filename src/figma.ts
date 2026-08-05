@@ -103,6 +103,75 @@ export function normalizeNodeId(id: string): string {
   return id.replace(/-/g, ':');
 }
 
+/**
+ * Pull the node id out of a Figma URL, if it has one.
+ *
+ * This is the difference between "here is my file" and "here is this frame".
+ * Every share link copied off a selected frame carries `?node-id=`, and
+ * dropping it silently — which this server used to do — turns a question about
+ * one frame into an answer about the whole file.
+ *
+ * Returns null for a bare file key or a URL with no node-id.
+ */
+export function parseNodeId(input: string): string | null {
+  const trimmed = input.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+
+  const match = trimmed.match(/[?&]node[-_]id=([^&#]+)/i);
+  if (!match) return null;
+
+  return normalizeNodeId(decodeURIComponent(match[1]));
+}
+
+interface NodeDoc {
+  id: string;
+  name: string;
+  type: string;
+  children?: NodeDoc[];
+}
+
+/**
+ * Every node inside `rootId`, including `rootId` itself, mapped to its name
+ * and type.
+ *
+ * Scoping has to include descendants: a comment is pinned to whatever layer sat
+ * under the cursor, so a note about a frame is usually anchored to a button or
+ * a text run several levels down, not to the frame. Matching the frame id alone
+ * would return almost nothing.
+ *
+ * Ancestors are deliberately excluded. A comment on the section that contains
+ * this frame is about the section — pulling it in would re-create the same
+ * over-broad answer in a subtler form.
+ *
+ * Returns names as well as ids so a scoped call can skip resolveNodeNames
+ * entirely — the subtree already has every name it needs.
+ */
+export async function descendantNodes(
+  fileKey: string,
+  rootId: string
+): Promise<Map<string, NodeInfo>> {
+  const out = new Map<string, NodeInfo>();
+
+  const data = await figmaFetch<{
+    nodes: Record<string, { document?: NodeDoc } | null>;
+  }>(`/files/${fileKey}/nodes?ids=${encodeURIComponent(rootId)}`);
+
+  const root = data.nodes?.[rootId]?.document;
+  if (!root) {
+    throw new Error(
+      `No node "${rootId}" in this file. Check the node-id in the URL, or pass scope:"file" to search the whole file.`
+    );
+  }
+
+  const walk = (node: NodeDoc) => {
+    out.set(node.id, { name: node.name, type: node.type });
+    node.children?.forEach(walk);
+  };
+  walk(root);
+
+  return out;
+}
+
 export function pinNodeId(pin: CommentPin | null): string | null {
   if (pin && 'node_id' in pin && pin.node_id) return normalizeNodeId(pin.node_id);
   return null;
