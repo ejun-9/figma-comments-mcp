@@ -82,6 +82,18 @@ you want:
 >
 > "Reply to the one about the empty state and say it's fixed in the latest push."
 
+## Trying it without a client
+
+```bash
+npm run try -- "https://figma.com/design/<key>/..."        # readable summary
+npm run try -- "https://figma.com/design/<key>/..." --raw  # the JSON the model receives
+npm run try -- "https://figma.com/design/<key>/..." --image 115-67
+```
+
+This spawns the server and speaks real JSON-RPC to it, so it exercises the transport rather
+than importing the functions directly. It reads `FIGMA_TOKEN` from the environment, falling
+back to the Claude Desktop config so there's nothing to set up twice.
+
 ## Notes
 
 - Built on `@modelcontextprotocol/server` v2, over stdio.
