@@ -127,7 +127,47 @@ interface NodeDoc {
   id: string;
   name: string;
   type: string;
+  annotations?: FigmaAnnotation[];
   children?: NodeDoc[];
+}
+
+/**
+ * A Dev Mode annotation. Not a comment — a different feature, a different
+ * place in the API, and the reason this server used to under-report a frame:
+ * annotations live on the node itself, so a file with six of them looks empty
+ * to anything that only reads /comments.
+ *
+ * `label` is the note. `properties` are the layer properties pinned alongside
+ * it (width, fill…), and an annotation may carry those with no label at all.
+ */
+export interface FigmaAnnotation {
+  label?: string;
+  properties?: { type: string }[];
+}
+
+export interface AnnotatedNode {
+  nodeId: string;
+  name: string;
+  type: string;
+  annotations: FigmaAnnotation[];
+}
+
+/** Every annotated node at or below `root`, in document order. */
+function collectAnnotations(root: NodeDoc): AnnotatedNode[] {
+  const out: AnnotatedNode[] = [];
+  const walk = (node: NodeDoc) => {
+    if (node.annotations?.length) {
+      out.push({
+        nodeId: node.id,
+        name: node.name,
+        type: node.type,
+        annotations: node.annotations
+      });
+    }
+    node.children?.forEach(walk);
+  };
+  walk(root);
+  return out;
 }
 
 /**
@@ -144,13 +184,14 @@ interface NodeDoc {
  * over-broad answer in a subtler form.
  *
  * Returns names as well as ids so a scoped call can skip resolveNodeNames
- * entirely — the subtree already has every name it needs.
+ * entirely — the subtree already has every name it needs. Annotations come out
+ * of the same payload, so reading them costs nothing extra.
  */
 export async function descendantNodes(
   fileKey: string,
   rootId: string
-): Promise<Map<string, NodeInfo>> {
-  const out = new Map<string, NodeInfo>();
+): Promise<{ names: Map<string, NodeInfo>; annotations: AnnotatedNode[] }> {
+  const names = new Map<string, NodeInfo>();
 
   const data = await figmaFetch<{
     nodes: Record<string, { document?: NodeDoc } | null>;
@@ -164,12 +205,33 @@ export async function descendantNodes(
   }
 
   const walk = (node: NodeDoc) => {
-    out.set(node.id, { name: node.name, type: node.type });
+    names.set(node.id, { name: node.name, type: node.type });
     node.children?.forEach(walk);
   };
   walk(root);
 
-  return out;
+  return { names, annotations: collectAnnotations(root) };
+}
+
+/**
+ * Every annotation in the file.
+ *
+ * There is no annotations endpoint, and annotations sit arbitrarily deep, so a
+ * depth-limited fetch would miss exactly the ones worth having. That means
+ * pulling the whole document — a few MB and about a second on a real design
+ * file. Only the whole-file path pays it; a scoped call gets its annotations
+ * out of the subtree it already fetched.
+ *
+ * Never throws: annotations are an enrichment, and losing them should not fail
+ * a call that was primarily about comments.
+ */
+export async function fileAnnotations(fileKey: string): Promise<AnnotatedNode[]> {
+  try {
+    const data = await figmaFetch<{ document?: NodeDoc }>(`/files/${fileKey}`);
+    return data.document ? collectAnnotations(data.document) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function pinNodeId(pin: CommentPin | null): string | null {

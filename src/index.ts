@@ -6,10 +6,12 @@ import {
   parseFileKey,
   parseNodeId,
   descendantNodes,
+  fileAnnotations,
   pinNodeId,
   normalizeNodeId,
   renderNode,
   resolveNodeNames,
+  type AnnotatedNode,
   type NodeInfo,
   type FigmaComment
 } from './figma.js';
@@ -19,7 +21,7 @@ if (!process.env.FIGMA_TOKEN) {
   process.exit(1);
 }
 
-const server = new McpServer({ name: 'figma-comments-mcp', version: '2.0.0' });
+const server = new McpServer({ name: 'figma-comments-mcp', version: '2.1.0' });
 
 /** MCP tools should report failure as content, not blow up the transport. */
 function toolError(err: unknown) {
@@ -43,12 +45,39 @@ function shortTime(iso: string): string {
   return iso.replace('T', ' ').slice(0, 16);
 }
 
+/** How many notes a set of annotated nodes carries — a node can hold several. */
+function countAnnotations(nodes: AnnotatedNode[]): number {
+  return nodes.reduce((n, a) => n + a.annotations.length, 0);
+}
+
+/**
+ * Annotations render as their own block rather than being mixed into the
+ * threads: they have no author and no timestamp, and reading them as comments
+ * is how "one annotation" becomes "someone said this to me".
+ */
+function annotationLines(nodes: AnnotatedNode[]): string[] {
+  const lines: string[] = [];
+  for (const node of nodes) {
+    lines.push('');
+    lines.push(`annotation on ${node.nodeId} "${node.name}" ${node.type}`);
+    for (const a of node.annotations) {
+      if (a.label) lines.push(`  ${a.label.replace(/\n+/g, ' ')}`);
+      // An annotation can pin layer properties with no note attached. Saying
+      // so beats printing a blank bullet.
+      const props = a.properties?.map((p) => p.type).join(', ');
+      if (props) lines.push(`  (pinned properties: ${props})`);
+      if (!a.label && !props) lines.push('  (empty annotation)');
+    }
+  }
+  return lines;
+}
+
 server.registerTool(
   'list_figma_comments',
   {
-    title: 'List Figma comments',
+    title: 'List Figma comments and annotations',
     description:
-      'Read comment threads on a Figma file, or on one frame within it. IMPORTANT: a URL copied off a selected frame carries node-id, and this tool scopes to that frame by default — threads elsewhere on the file are counted but not returned. Pass scope:"file" to read everything.',
+      'Read the feedback on a Figma file, or on one frame within it: comment threads AND Dev Mode annotations, which are a separate feature pinned to layers and are easy to miss otherwise. IMPORTANT: a URL copied off a selected frame carries node-id, and this tool scopes to that frame by default — threads elsewhere on the file are counted but not returned. Pass scope:"file" to read everything.',
     inputSchema: z.object({
       file: z
         .string()
@@ -68,10 +97,17 @@ server.registerTool(
         .string()
         .optional()
         .describe('ISO 8601. Threads with any activity after this, including new replies to old threads.'),
-      include_resolved: z.boolean().optional().default(false).describe('Include resolved threads')
+      include_resolved: z.boolean().optional().default(false).describe('Include resolved threads'),
+      include_annotations: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Include Dev Mode annotations pinned to layers. On by default — they read as feedback and are invisible to the comments API.'
+        )
     })
   },
-  async ({ file, node_id, scope, since, include_resolved }) => {
+  async ({ file, node_id, scope, since, include_resolved, include_annotations }) => {
     try {
       const fileKey = parseFileKey(file);
 
@@ -113,8 +149,11 @@ server.registerTool(
       // A scoped call already holds the whole subtree, so it has every name it
       // needs; only a whole-file call has to go back for them.
       let names: Map<string, NodeInfo>;
+      let annotations: AnnotatedNode[] = [];
       if (scopeId) {
-        names = await descendantNodes(fileKey, scopeId);
+        const subtree = await descendantNodes(fileKey, scopeId);
+        names = subtree.names;
+        annotations = subtree.annotations;
         threads = threads.filter((t) => {
           const id = pinNodeId(t.client_meta);
           return id ? names.has(id) : false;
@@ -124,7 +163,10 @@ server.registerTool(
           fileKey,
           threads.map((t) => pinNodeId(t.client_meta)).filter((id): id is string => !!id)
         );
+        // No subtree to read them out of, so this one costs a full-file fetch.
+        if (include_annotations) annotations = await fileAnnotations(fileKey);
       }
+      if (!include_annotations) annotations = [];
 
       threads.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
@@ -132,9 +174,17 @@ server.registerTool(
         ? `${names.get(scopeId)?.type.toLowerCase() ?? 'node'} ${scopeId} "${names.get(scopeId)?.name ?? '?'}"`
         : 'whole file';
 
-      const lines: string[] = [
-        `${fileKey} · ${scopeLabel} · ${threads.length} thread${threads.length === 1 ? '' : 's'}`
-      ];
+      // Both counts on the headline. A frame with one comment and one
+      // annotation reported "1 thread", and one number that looks complete is
+      // worse than two that disagree with your memory.
+      const annCount = countAnnotations(annotations);
+      const headline =
+        `${fileKey} · ${scopeLabel} · ${threads.length} thread${threads.length === 1 ? '' : 's'}` +
+        (include_annotations
+          ? ` · ${annCount} annotation${annCount === 1 ? '' : 's'}`
+          : ' · annotations not read');
+
+      const lines: string[] = [headline];
 
       // The count that would have prevented reading six comments as one frame's
       // worth. Silent filtering is as misleading as silent over-fetching.
@@ -177,8 +227,14 @@ server.registerTool(
         }
       }
 
-      if (threads.length === 0 && excluded === 0) {
-        lines.push('No unresolved comments.');
+      lines.push(...annotationLines(annotations));
+
+      if (threads.length === 0 && excluded === 0 && annCount === 0) {
+        lines.push(
+          include_annotations
+            ? 'No unresolved comments and no annotations.'
+            : 'No unresolved comments.'
+        );
       }
 
       return text(lines.join('\n'));

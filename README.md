@@ -1,6 +1,7 @@
 # figma-comments-mcp
 
-An MCP server that lets Claude read Figma file comments directly.
+An MCP server that lets Claude read Figma design feedback directly — comment threads and
+Dev Mode annotations.
 
 ## Why I built it
 
@@ -19,8 +20,38 @@ mine.
 
 | Tool | What it does |
 |---|---|
-| `list_figma_comments` | Reads comment threads on a file, **or on one frame within it**. Resolves each pin to the layer it sits on, so a comment arrives as *"on `01 · Results — default`"* rather than `{node_id: "132:5"}`. Filters resolved threads by default. Optional `since` returns anything with new activity — including old threads that just got a reply. |
+| `list_figma_comments` | Reads comment threads **and annotations** on a file, **or on one frame within it**. Resolves each pin to the layer it sits on, so a comment arrives as *"on `01 · Results — default`"* rather than `{node_id: "132:5"}`. Filters resolved threads by default. Optional `since` returns anything with new activity — including old threads that just got a reply. |
 | `get_figma_comment_image` | Renders whatever a comment is pinned to and returns it as an image. This is the one that matters for comments left on screenshots — see below. |
+
+### Annotations are not comments
+
+Dev Mode annotations look like feedback, read like feedback, and are invisible to
+`/v1/files/:key/comments`. They live on the node, in the file document.
+
+This server missed all of them until v2.1.0. On the file it was built for, that was six
+annotations — every one of them a real design question — silently absent from every answer
+it had ever given. A frame the designer knew held one comment and one annotation came back
+as *"1 thread"*, which reads as complete.
+
+So both counts are now on the headline, and annotations render in their own block rather
+than being mixed into the threads — they have no author and no timestamp, and reading them
+as comments turns a note-to-self into something a collaborator said to you:
+
+```
+rNK3UkoeLnbBHHYQiv9MW8 · frame 132:5 "01 · Results — default" · 1 thread · 1 annotation
+
+1873426532 · Eun Ji Jung · 2026-08-05 19:22
+  on 132:5 "01 · Results — default" FRAME
+  have hover states
+
+annotation on 132:258 "Overview" FRAME
+  allow for collapsing panels
+```
+
+A scoped call gets them free — the subtree it already fetched to resolve layer names carries
+them. A whole-file call pays for a full document fetch (a few MB, about a second), because
+annotations sit arbitrarily deep and a depth-limited fetch would miss exactly the ones worth
+having. Pass `include_annotations: false` to skip it.
 
 ### Scoping: the frame link problem
 
