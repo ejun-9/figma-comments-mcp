@@ -1,22 +1,25 @@
 # figma-comments-mcp
 
-Lets Claude read your Figma feedback — comment threads and Dev Mode annotations — so you
-don't have to retype it.
+**An MCP server that lets Claude read your Figma comments and Dev Mode annotations.**
+Read-only. Scoped to the frame you link.
 
-Design feedback lives in Figma. The agent can't see it. So every round meant reading comments
-in Figma, retyping them into Claude, and getting the change back — with me as the copy-paste
-layer in between.
+Design feedback lives in Figma. The agent can't see it. So every round of changes meant
+reading comments in Figma, retyping them into Claude, and pasting the result back — with me
+as the copy-paste layer in the middle.
 
-Now: leave your comments in Figma, paste the frame link, and Claude reads them and makes the
-changes.
+Now: leave the comments where you already leave them, paste the frame link, and ask.
 
-## What it does
+> **"Read the comments on `figma.com/design/abc123/…?node-id=132-5` and apply them."**
 
-Two tools.
+I wrote about why I built it here: [figma-comments-mcp: an MCP server so Claude can read
+your comments](https://eunji.design/thoughts/figma-comments-mcp).
 
-**`list_figma_comments`** — reads the comment threads and annotations on a file, or on one
-frame within it. Each one is resolved to the layer it's pinned to, so a comment arrives as
-*"on `01 · Results — default`"* rather than a node id.
+---
+
+## What Claude sees
+
+A comment arrives resolved to the layer it's pinned to — the layer *name*, not a node id —
+so the agent knows what the feedback is about:
 
 ```
 rNK3UkoeLnbBHHYQiv9MW8 · frame 132:5 "01 · Results — default" · 1 thread · 1 annotation
@@ -29,25 +32,36 @@ annotation on 132:258 "Overview" FRAME
   allow for collapsing panels
 ```
 
-**`get_figma_comment_image`** — renders the layer a comment is pinned to. For when the
-comment is spatial (*"too much space here"*) and the words alone aren't enough, or when it's
-pinned to a pasted screenshot whose layer name is something useless like `image 21`.
+## The two tools
 
-It only reads. It never writes to Figma, edits your designs, or posts replies.
+**`list_figma_comments`** — comment threads and Dev Mode annotations on a file, or on one
+frame within it, each resolved to its layer.
 
-Two behaviours worth knowing:
+**`get_figma_comment_image`** — renders the layer a comment is pinned to. For when the note
+is spatial (*"too much space here"*) and the words alone don't carry it, or when it's pinned
+to a pasted screenshot whose layer name is something useless like `image 21`.
 
-- **A frame link reads only that frame.** Any Figma URL copied with a frame selected carries
-  `?node-id=`, and the tool scopes to it — including everything nested inside, excluding the
-  section around it. It always reports how many threads it left out. Pass `scope: "file"` for
-  the whole file.
-- **Annotations are not comments.** Dev Mode annotations are a separate Figma feature,
-  invisible to the comments API, and easy to forget you left. Both counts are on the headline
-  so a frame never looks emptier than it is.
+### It only reads
+
+It never writes to Figma, edits your designs, or posts replies. The token it asks for is
+read-only on both scopes, and there is no code path that mutates anything.
+
+### Two behaviours worth knowing
+
+**A frame link reads only that frame.** Any Figma URL copied with a frame selected carries
+`?node-id=`, and the tool scopes to it — including everything nested inside, excluding the
+section around it. It always reports how many threads it left out. Pass `scope: "file"` for
+the whole file.
+
+**Annotations are not comments.** Dev Mode annotations are a separate Figma feature,
+invisible to the comments API, and easy to forget you left. Both counts are on the headline
+so a frame never looks emptier than it is.
+
+---
 
 ## Setup
 
-Node 20 or newer.
+Node 20 or newer. Five steps, and step 4 is the one everyone misses.
 
 ### 1. Clone and build
 
@@ -118,6 +132,8 @@ FIGMA_TOKEN=figd_your_token_here npm run try -- "https://figma.com/design/<key>/
 If that prints threads and your client shows nothing, the problem is the config or the
 restart — not the token.
 
+---
+
 ## Using it
 
 Copy a link from Figma with the frame selected, and ask:
@@ -127,6 +143,11 @@ Copy a link from Figma with the frame selected, and ask:
 > "What's still open across the whole file?"
 >
 > "What did I annotate on this frame?"
+
+The first is the one that changes your day. The feedback goes straight from where the
+reviewer left it into the change, without passing through you.
+
+---
 
 ## Troubleshooting
 
@@ -141,7 +162,9 @@ Copy a link from Figma with the frame selected, and ask:
 | Changes to `src/` do nothing | `npm run build`, then restart the client. |
 | `No node "1:2" in this file` | The `node-id` is from a different file. Pass `scope: "file"` to search everything. |
 
-## Notes
+---
+
+## How it's built
 
 - TypeScript on `@modelcontextprotocol/server` v2, over stdio. Hits the Figma REST API with
   `fetch` — no SDK.
@@ -151,6 +174,12 @@ Copy a link from Figma with the frame selected, and ask:
   `/v1/files/:key`, `/v1/images/:key`.
 - Built with Claude.
 
+## Related
+
+- [ds-specs](https://github.com/ejun-9/ds-specs) — a Claude Skill that builds design systems
+  an LLM can follow, with a two-way Figma bridge.
+- [More of what I'm figuring out](https://eunji.design/thoughts) about designing with agents.
+
 ## License
 
-ISC.
+ISC. See [LICENSE](LICENSE).
