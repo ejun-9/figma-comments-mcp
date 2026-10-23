@@ -57,6 +57,10 @@ the whole file.
 invisible to the comments API, and easy to forget you left. Both counts are on the headline
 so a frame never looks emptier than it is.
 
+### Why not Figma's own MCP server?
+
+Figma's official MCP server reads designs, variables and Code Connect mappings, but it has no tool for comments. I checked its tool list again in October 2026. Figma's forum has reports of annotations coming back when you ask about one layer at a time, so you still can't get everything pinned to a frame. This server reads every comment and annotation on a frame in one call.
+
 ---
 
 ## Setup
